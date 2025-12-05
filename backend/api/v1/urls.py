@@ -35,7 +35,7 @@ urlpatterns = [
     # path('customers/', include('api.v1.customers.urls')),
     
     # Restaurant endpoints
-    # path('restaurants/', include('api.v1.restaurants.urls')),
+    path('', include('api.v1.restaurants.urls')),
     
     # Admin endpoints
     path('admin/', include('api.v1.admin.urls')),

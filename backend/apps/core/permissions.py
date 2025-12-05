@@ -55,6 +55,33 @@ class IsOwnerOrAdmin(permissions.BasePermission):
         return obj == request.user
 
 
+class IsRestaurantOwner(permissions.BasePermission):
+    """
+    Permission to only allow restaurant owners to access their own restaurant
+    """
+    def has_permission(self, request, view):
+        # User must be authenticated
+        if not request.user or not request.user.is_authenticated:
+            return False
+        # Must be restaurant type or admin
+        return request.user.is_restaurant or request.user.is_admin or request.user.is_staff
+    
+    def has_object_permission(self, request, view, obj):
+        # Admins have full access
+        if request.user.is_admin or request.user.is_staff:
+            return True
+        
+        # Check if obj is Restaurant
+        if hasattr(obj, 'user'):
+            return obj.user == request.user
+        
+        # Check if obj is Product/Image and belongs to user's restaurant
+        if hasattr(obj, 'restaurant'):
+            return obj.restaurant.user == request.user
+        
+        return False
+
+
 class ReadOnly(permissions.BasePermission):
     """
     Permission to only allow read operations (GET, HEAD, OPTIONS)
