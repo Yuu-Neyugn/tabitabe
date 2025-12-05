@@ -1,0 +1,29 @@
+-r base.txt
+
+# Development Tools
+django-extensions==3.2.3
+django-debug-toolbar==4.4.6
+ipython==8.31.0
+ipdb==0.13.13
+
+# Code Quality
+black==24.10.0
+ruff==0.8.4
+mypy==1.13.0
+django-stubs==5.1.1
+djangorestframework-stubs==3.15.1
+
+# Testing
+pytest==8.3.4
+pytest-django==4.9.0
+pytest-cov==6.0.0
+pytest-xdist==3.6.1
+factory-boy==3.3.1
+faker==33.1.0
+coverage==7.6.9
+
+# Performance Profiling
+django-silk==5.3.0
+
+# Pre-commit hooks
+pre-commit==4.0.1

@@ -1,0 +1,11 @@
+-r base.txt
+
+# Production Server
+gunicorn==23.0.0
+uvicorn[standard]==0.34.0
+
+# Performance
+django-redis==5.4.0
+
+# Security
+django-ratelimit==4.1.0

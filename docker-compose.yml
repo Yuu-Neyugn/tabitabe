@@ -1,0 +1,222 @@
+version: '3.9'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:16-alpine
+    container_name: tabitabe_postgres
+    environment:
+      POSTGRES_DB: ${DB_NAME:-tabitabe_dev}
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./infrastructure/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - tabitabe_network
+
+  # Redis (Cache + Celery Broker)
+  redis:
+    image: redis:7-alpine
+    container_name: tabitabe_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - tabitabe_network
+
+  # MinIO (S3-compatible storage)
+  minio:
+    image: minio/minio:latest
+    container_name: tabitabe_minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-minioadmin}
+    ports:
+      - "9000:9000"  # API
+      - "9001:9001"  # Console
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+    networks:
+      - tabitabe_network
+
+  # MinIO Client (Create buckets on startup)
+  minio-init:
+    image: minio/mc:latest
+    container_name: tabitabe_minio_init
+    depends_on:
+      - minio
+    entrypoint: >
+      /bin/sh -c "
+      sleep 10;
+      /usr/bin/mc alias set myminio http://minio:9000 minioadmin minioadmin;
+      /usr/bin/mc mb myminio/tabitabe-media --ignore-existing;
+      /usr/bin/mc mb myminio/tabitabe-public --ignore-existing;
+      /usr/bin/mc anonymous set download myminio/tabitabe-public;
+      echo 'MinIO buckets created successfully';
+      "
+    networks:
+      - tabitabe_network
+
+  # Keycloak (OIDC/OAuth2)
+  keycloak:
+    image: quay.io/keycloak/keycloak:23.0
+    container_name: tabitabe_keycloak
+    environment:
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/${DB_NAME:-tabitabe_dev}
+      KC_DB_USERNAME: ${DB_USER:-postgres}
+      KC_DB_PASSWORD: ${DB_PASSWORD:-postgres}
+      KC_HOSTNAME: localhost
+      KC_HTTP_ENABLED: "true"
+      KC_HOSTNAME_STRICT: "false"
+      KC_HOSTNAME_STRICT_HTTPS: "false"
+    command:
+      - start-dev
+      - --import-realm
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./infrastructure/keycloak/realm-export.json:/opt/keycloak/data/import/realm-export.json
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health/ready"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    networks:
+      - tabitabe_network
+
+  # Django Backend (Uncomment when ready)
+  # backend:
+  #   build:
+  #     context: ./backend
+  #     dockerfile: docker/Dockerfile.dev
+  #   container_name: tabitabe_backend
+  #   command: python manage.py runserver 0.0.0.0:8000
+  #   environment:
+  #     - DJANGO_SETTINGS_MODULE=config.settings.development
+  #   env_file:
+  #     - .env.development
+  #   ports:
+  #     - "8000:8000"
+  #   volumes:
+  #     - ./backend:/app
+  #     - backend_static:/app/staticfiles
+  #     - backend_media:/app/media
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
+  #     redis:
+  #       condition: service_healthy
+  #     minio:
+  #       condition: service_healthy
+  #   networks:
+  #     - tabitabe_network
+
+  # Celery Worker (Uncomment when ready)
+  # celery-worker:
+  #   build:
+  #     context: ./backend
+  #     dockerfile: docker/Dockerfile.dev
+  #   container_name: tabitabe_celery_worker
+  #   command: celery -A config worker -l info
+  #   env_file:
+  #     - .env.development
+  #   volumes:
+  #     - ./backend:/app
+  #   depends_on:
+  #     - postgres
+  #     - redis
+  #   networks:
+  #     - tabitabe_network
+
+  # Celery Beat (Scheduler - Uncomment when ready)
+  # celery-beat:
+  #   build:
+  #     context: ./backend
+  #     dockerfile: docker/Dockerfile.dev
+  #   container_name: tabitabe_celery_beat
+  #   command: celery -A config beat -l info
+  #   env_file:
+  #     - .env.development
+  #   volumes:
+  #     - ./backend:/app
+  #   depends_on:
+  #     - postgres
+  #     - redis
+  #   networks:
+  #     - tabitabe_network
+
+  # Next.js Frontend - Customer App (Uncomment when ready)
+  # frontend-customer:
+  #   build:
+  #     context: ./frontend
+  #     dockerfile: apps/customer-app/Dockerfile.dev
+  #   container_name: tabitabe_frontend_customer
+  #   command: pnpm dev
+  #   ports:
+  #     - "3000:3000"
+  #   volumes:
+  #     - ./frontend:/app
+  #     - /app/node_modules
+  #   environment:
+  #     - NEXT_PUBLIC_API_URL=http://localhost:8000/api/v1
+  #   networks:
+  #     - tabitabe_network
+
+  # Next.js Frontend - Restaurant Portal (Uncomment when ready)
+  # frontend-restaurant:
+  #   build:
+  #     context: ./frontend
+  #     dockerfile: apps/restaurant-portal/Dockerfile.dev
+  #   container_name: tabitabe_frontend_restaurant
+  #   command: pnpm dev
+  #   ports:
+  #     - "3001:3000"
+  #   volumes:
+  #     - ./frontend:/app
+  #     - /app/node_modules
+  #   environment:
+  #     - NEXT_PUBLIC_API_URL=http://localhost:8000/api/v1
+  #   networks:
+  #     - tabitabe_network
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  minio_data:
+    driver: local
+  backend_static:
+    driver: local
+  backend_media:
+    driver: local
+
+networks:
+  tabitabe_network:
+    driver: bridge
