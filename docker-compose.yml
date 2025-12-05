@@ -10,7 +10,7 @@ services:
       POSTGRES_USER: ${DB_USER:-postgres}
       POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
     ports:
-      - "5432:5432"
+      - "5434:5432"  # Changed from 5432 to avoid conflict
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./infrastructure/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
@@ -47,8 +47,8 @@ services:
       MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minioadmin}
       MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-minioadmin}
     ports:
-      - "9000:9000"  # API
-      - "9001:9001"  # Console
+      - "9002:9000"  # API - Changed from 9000 to avoid conflict
+      - "9003:9001"  # Console - Changed from 9001 to avoid conflict
     volumes:
       - minio_data:/data
     healthcheck:
@@ -96,7 +96,7 @@ services:
       - start-dev
       - --import-realm
     ports:
-      - "8080:8080"
+      - "8081:8080"  # Changed from 8080 to avoid conflict
     volumes:
       - ./infrastructure/keycloak/realm-export.json:/opt/keycloak/data/import/realm-export.json
     depends_on:

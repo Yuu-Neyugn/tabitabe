@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>レストラン審査結果</title>
+    <style>
+        body {
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .header {
+            background: #e74c3c;
+            color: white;
+            padding: 30px;
+            text-align: center;
+            border-radius: 10px 10px 0 0;
+        }
+        .content {
+            background: #f9f9f9;
+            padding: 30px;
+            border-radius: 0 0 10px 10px;
+        }
+        .restaurant-info {
+            background: white;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 8px;
+            border-left: 4px solid #e74c3c;
+        }
+        .reason-box {
+            background: #fff3cd;
+            border: 1px solid #ffc107;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 5px;
+        }
+        .button {
+            display: inline-block;
+            background: #667eea;
+            color: white;
+            padding: 12px 30px;
+            text-decoration: none;
+            border-radius: 5px;
+            margin: 20px 0;
+        }
+        .footer {
+            text-align: center;
+            margin-top: 30px;
+            color: #666;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>レストラン審査結果のお知らせ</h1>
+    </div>
+    <div class="content">
+        <p>{{ owner.first_name }} {{ owner.last_name }} 様</p>
+        
+        <p>この度はTabitabeへのレストラン登録をご申請いただき、誠にありがとうございます。</p>
+        
+        <div class="restaurant-info">
+            <h3>{{ restaurant.name }}</h3>
+            <p><strong>所在地:</strong> {{ restaurant.prefecture }}{{ restaurant.city }}{{ restaurant.address_line }}</p>
+        </div>
+        
+        <p>誠に申し訳ございませんが、審査の結果、現時点では登録要件を満たしていないと判断いたしました。</p>
+        
+        <div class="reason-box">
+            <h4>不承認の理由:</h4>
+            <p>{{ rejection_reason }}</p>
+        </div>
+        
+        <p>上記の内容をご確認いただき、必要な情報を修正の上、再度ご申請いただけますようお願いいたします。</p>
+        
+        <a href="{{ settings.FRONTEND_URL }}/restaurant/resubmit" class="button">情報を修正して再申請</a>
+        
+        <p>ご不明な点がございましたら、お気軽にお問い合わせください。</p>
+        
+        <p>何卒よろしくお願いいたします。</p>
+    </div>
+    <div class="footer">
+        <p>このメールは自動送信されています。</p>
+        <p>&copy; 2025 Tabitabe. All rights reserved.</p>
+    </div>
+</body>
+</html>
