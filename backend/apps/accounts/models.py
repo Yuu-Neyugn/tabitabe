@@ -1,6 +1,6 @@
 """
-Custom User Model with OIDC Integration
-Supports 3 user types: Customer, Restaurant, Admin
+Custom User Model with OIDC Integration and RBAC
+Supports 3 user types: Customer, Restaurant, Admin (DEPRECATED - use RBAC roles instead)
 """
 from django.contrib.auth.models import AbstractUser, BaseUserManager
 from django.db import models
@@ -8,6 +8,7 @@ from django.utils import timezone
 from django.core.validators import RegexValidator
 from phonenumber_field.modelfields import PhoneNumberField
 import uuid
+import warnings
 
 
 class UserManager(BaseUserManager):
@@ -60,12 +61,24 @@ class CustomUser(AbstractUser):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     email = models.EmailField('Email Address', unique=True, db_index=True)
     
-    # User type
+    # ✅ NEW: Multiple roles per user (RBAC)
+    roles = models.ManyToManyField(
+        'accounts.Role',
+        through='accounts.UserRole',
+        through_fields=('user', 'role'),  # Specify which fields to use
+        related_name='users',
+        blank=True,
+        help_text='User roles (RBAC)'
+    )
+    
+    # ⚠️ DEPRECATED: User type field (kept for backward compatibility)
     user_type = models.IntegerField(
-        'User Type',
+        'User Type (DEPRECATED)',
         choices=UserType.choices,
-        default=UserType.CUSTOMER,
-        db_index=True
+        null=True,
+        blank=True,
+        db_index=True,
+        help_text='DEPRECATED: Use roles instead. Will be removed in v2.0'
     )
     
     # OIDC fields
@@ -108,20 +121,161 @@ class CustomUser(AbstractUser):
     def __str__(self):
         return self.email
     
+    # ============================================
+    # ✅ NEW: RBAC Methods
+    # ============================================
+    
+    def has_role(self, role_name):
+        """
+        Check if user has specific role
+        
+        Args:
+            role_name: Role name (e.g., 'super_admin', 'restaurant_owner')
+        
+        Returns:
+            bool: True if user has the role and it's active
+        """
+        from .rbac_models import UserRole
+        return UserRole.objects.filter(
+            user=self,
+            role__name=role_name,
+            is_active=True
+        ).exists()
+    
+    def has_permission(self, resource, action):
+        """
+        Check if user has permission for resource + action
+        
+        Args:
+            resource: Permission.Resource choice (e.g., 'restaurant')
+            action: Permission.Action choice (e.g., 'edit')
+        
+        Returns:
+            bool: True if user has the permission
+        """
+        from .rbac_models import Permission, UserRole
+        
+        # Get active role IDs for this user
+        active_role_ids = UserRole.objects.filter(
+            user=self,
+            is_active=True
+        ).values_list('role_id', flat=True)
+        
+        return Permission.objects.filter(
+            roles__id__in=active_role_ids,
+            resource=resource,
+            action=action
+        ).exists()
+    
+    def get_active_roles(self):
+        """
+        Get all active roles for user (including expiry check)
+        
+        Returns:
+            QuerySet: Active roles
+        """
+        from .rbac_models import Role, UserRole
+        now = timezone.now()
+        
+        # Query from UserRole to get active assignments
+        active_user_role_ids = UserRole.objects.filter(
+            user=self,
+            is_active=True
+        ).filter(
+            models.Q(expires_at__isnull=True) |
+            models.Q(expires_at__gt=now)
+        ).values_list('role_id', flat=True)
+        
+        return Role.objects.filter(id__in=active_user_role_ids)
+    
+    def get_regions(self):
+        """
+        Get all regions user has access to
+        
+        Returns:
+            QuerySet: Region objects
+        """
+        from .rbac_models import Region, UserRole
+        
+        # Global roles have access to all regions
+        if self.has_role('super_admin') or self.has_role('global_operations'):
+            return Region.objects.filter(is_active=True)
+        
+        # Get regions from active UserRole assignments
+        region_ids = UserRole.objects.filter(
+            user=self,
+            is_active=True,
+            region__isnull=False
+        ).values_list('region_id', flat=True).distinct()
+        
+        return Region.objects.filter(id__in=region_ids)
+    
+    # ============================================
+    # Convenience Properties (RBAC)
+    # ============================================
+    
+    @property
+    def is_super_admin(self):
+        """Check if user is Super Admin"""
+        return self.has_role('super_admin')
+    
+    @property
+    def is_government(self):
+        """Check if user has government role"""
+        return self.has_role('government_admin') or self.has_role('government_analyst')
+    
+    @property
+    def is_restaurant_owner(self):
+        """Check if user is restaurant owner"""
+        return self.has_role('restaurant_owner')
+    
+    @property
+    def is_customer_premium(self):
+        """Check if user has premium customer role"""
+        return self.has_role('customer_premium') or self.has_role('customer_premium_plus')
+    
+    # ============================================
+    # ⚠️ DEPRECATED: Legacy user_type properties
+    # ============================================
+    
     @property
     def is_customer(self):
-        """Check if user is a customer"""
-        return self.user_type == UserType.CUSTOMER
+        """
+        DEPRECATED: Check if user is a customer
+        Use has_role('customer_free') or is_customer_premium instead
+        """
+        warnings.warn(
+            "is_customer is deprecated. Use has_role('customer_free') instead.",
+            DeprecationWarning,
+            stacklevel=2
+        )
+        return self.user_type == UserType.CUSTOMER if self.user_type else False
     
     @property
     def is_restaurant(self):
-        """Check if user is a restaurant"""
-        return self.user_type == UserType.RESTAURANT
+        """
+        DEPRECATED: Check if user is a restaurant
+        Use is_restaurant_owner or has_role('restaurant_manager') instead
+        """
+        warnings.warn(
+            "is_restaurant is deprecated. Use is_restaurant_owner instead.",
+            DeprecationWarning,
+            stacklevel=2
+        )
+        return self.user_type == UserType.RESTAURANT if self.user_type else False
     
     @property
     def is_admin(self):
-        """Check if user is an admin"""
-        return self.user_type == UserType.ADMIN
+        """
+        DEPRECATED: Check if user is an admin
+        Use is_super_admin or has_role('region_admin') instead
+        """
+        warnings.warn(
+            "is_admin is deprecated. Use is_super_admin instead.",
+            DeprecationWarning,
+            stacklevel=2
+        )
+        return self.user_type == UserType.ADMIN if self.user_type else False
     
     def get_full_name(self):
         """Return full name or email"""

@@ -1,5 +1,5 @@
 """
-Accounts App - User Authentication & Management
-Handles CustomUser, CustomerProfile, and authentication logic
+Accounts App - User Authentication & RBAC Management
+Handles CustomUser, CustomerProfile, RBAC (Role-Based Access Control)
 """
 default_app_config = 'apps.accounts.apps.AccountsConfig'

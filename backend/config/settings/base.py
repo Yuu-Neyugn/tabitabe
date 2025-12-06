@@ -146,8 +146,13 @@ AUTH_USER_MODEL = 'accounts.CustomUser'
 
 # Authentication Backends
 AUTHENTICATION_BACKENDS = [
-    'mozilla_django_oidc.auth.OIDCAuthenticationBackend',
-    'django.contrib.auth.backends.ModelBackend',
+    # OIDC authentication (Keycloak)
+    'apps.accounts.oidc_backend.TabitabeOIDCBackend',
+    # Email/Password fallback
+    'apps.accounts.auth_backends.EmailBackend',
+    # RBAC permission checking
+    'apps.accounts.auth_backends.RBACPermissionBackend',
+    # Object-level permissions (django-guardian)
     'guardian.backends.ObjectPermissionBackend',
 ]
 
@@ -193,27 +198,54 @@ SIMPLE_JWT = {
     'UPDATE_LAST_LOGIN': True,
 }
 
-# OIDC Settings (Keycloak)
-OIDC_RP_CLIENT_ID = config('OIDC_RP_CLIENT_ID', default='tabitabe-backend')
-OIDC_RP_CLIENT_SECRET = config('OIDC_RP_CLIENT_SECRET', default='')
+# ============================================================================
+# OIDC/OAuth2 Settings (Keycloak)
+# ============================================================================
+# Client Configuration
+OIDC_RP_CLIENT_ID = config('OIDC_RP_CLIENT_ID', default='tabitabe-web')
+OIDC_RP_CLIENT_SECRET = config('OIDC_RP_CLIENT_SECRET', default='tabitabe-web-secret-change-in-production')
+
+# Keycloak Endpoints (Port 8081 để tránh conflict)
 OIDC_OP_AUTHORIZATION_ENDPOINT = config(
     'OIDC_OP_AUTHORIZATION_ENDPOINT',
-    default='http://localhost:8080/realms/tabitabe/protocol/openid-connect/auth'
+    default='http://localhost:8081/realms/tabitabe/protocol/openid-connect/auth'
 )
 OIDC_OP_TOKEN_ENDPOINT = config(
     'OIDC_OP_TOKEN_ENDPOINT',
-    default='http://localhost:8080/realms/tabitabe/protocol/openid-connect/token'
+    default='http://localhost:8081/realms/tabitabe/protocol/openid-connect/token'
 )
 OIDC_OP_USER_ENDPOINT = config(
     'OIDC_OP_USER_ENDPOINT',
-    default='http://localhost:8080/realms/tabitabe/protocol/openid-connect/userinfo'
+    default='http://localhost:8081/realms/tabitabe/protocol/openid-connect/userinfo'
 )
 OIDC_OP_JWKS_ENDPOINT = config(
     'OIDC_OP_JWKS_ENDPOINT',
-    default='http://localhost:8080/realms/tabitabe/protocol/openid-connect/certs'
+    default='http://localhost:8081/realms/tabitabe/protocol/openid-connect/certs'
 )
+
+# Token Configuration
 OIDC_RP_SIGN_ALGO = 'RS256'
-OIDC_RENEW_ID_TOKEN_EXPIRY_SECONDS = 900
+OIDC_RP_SCOPES = 'openid email profile'  # Remove 'roles' - will get from token claims
+OIDC_RENEW_ID_TOKEN_EXPIRY_SECONDS = 3600  # 1 hour
+
+# Session Configuration
+OIDC_STORE_ACCESS_TOKEN = True
+OIDC_STORE_ID_TOKEN = True
+
+# Callback URLs - IMPORTANT: These control where users go after authentication
+LOGIN_REDIRECT_URL = '/accounts/test/oidc/success/'  # Where to go after successful login
+LOGOUT_REDIRECT_URL = '/accounts/test/oidc/'  # Where to go after logout
+LOGIN_URL = '/oidc/authenticate/'  # Where to go when login is required
+
+# OIDC Callback Configuration
+# This tells mozilla-django-oidc which view handles the callback from Keycloak
+OIDC_AUTHENTICATION_CALLBACK_URL = 'oidc_authentication_callback'
+
+# Create users if they don't exist (optional)
+OIDC_CREATE_USER = True
+
+# Use nonce for security
+OIDC_USE_NONCE = True
 
 # CORS Settings
 CORS_ALLOWED_ORIGINS = config(

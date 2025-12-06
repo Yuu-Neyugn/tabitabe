@@ -2,6 +2,7 @@ from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.utils.html import format_html
 from .models import CustomUser, CustomerProfile, UserType
+from .rbac_models import Organization, Region, Market, Role, Permission, UserRole
 
 
 @admin.register(CustomUser)
@@ -86,3 +87,154 @@ class CustomerProfileAdmin(admin.ModelAdmin):
         return obj.user.email
     user_email.short_description = 'Email'
     user_email.admin_order_field = 'user__email'
+
+
+# ============================================
+# ✅ RBAC Admin Interfaces
+# ============================================
+
+@admin.register(Organization)
+class OrganizationAdmin(admin.ModelAdmin):
+    """Organization Admin (Singleton)"""
+    
+    list_display = ['name', 'slug', 'default_currency', 'support_email']
+    readonly_fields = ['created_at', 'updated_at']
+    
+    fieldsets = (
+        ('Basic Info', {'fields': ('name', 'slug')}),
+        ('Currencies', {'fields': ('default_currency', 'supported_currencies')}),
+        ('Branding', {'fields': ('logo', 'primary_color')}),
+        ('Contact', {'fields': ('support_email', 'support_phone')}),
+        ('Timestamps', {'fields': ('created_at', 'updated_at')}),
+    )
+    
+    def has_add_permission(self, request):
+        # Only allow creating 1 organization
+        return not Organization.objects.exists()
+    
+    def has_delete_permission(self, request, obj=None):
+        # Cannot delete organization
+        return False
+
+
+@admin.register(Region)
+class RegionAdmin(admin.ModelAdmin):
+    """Region Admin"""
+    
+    list_display = [
+        'name', 'code', 'default_language', 'currency',
+        'is_active', 'launched_at'
+    ]
+    list_filter = ['is_active', 'default_language', 'currency']
+    search_fields = ['name', 'code', 'support_email']
+    readonly_fields = ['created_at', 'updated_at']
+    
+    fieldsets = (
+        ('Basic Info', {'fields': ('organization', 'name', 'code')}),
+        ('Localization', {'fields': ('default_language', 'timezone', 'currency')}),
+        ('Infrastructure', {'fields': ('cloudfront_distribution', 's3_bucket_region')}),
+        ('Contact', {'fields': ('support_email', 'support_phone')}),
+        ('Status', {'fields': ('is_active', 'launched_at')}),
+        ('Timestamps', {'fields': ('created_at', 'updated_at')}),
+    )
+
+
+@admin.register(Market)
+class MarketAdmin(admin.ModelAdmin):
+    """Market Admin"""
+    
+    list_display = ['name', 'code', 'region', 'is_active']
+    list_filter = ['region', 'is_active']
+    search_fields = ['name', 'code']
+    readonly_fields = ['created_at', 'updated_at']
+    
+    fieldsets = (
+        ('Basic Info', {'fields': ('region', 'name', 'code')}),
+        ('Geographic', {'fields': ('latitude', 'longitude')}),
+        ('Status', {'fields': ('is_active',)}),
+        ('Timestamps', {'fields': ('created_at', 'updated_at')}),
+    )
+
+
+class RolePermissionInline(admin.TabularInline):
+    """Inline for Role <-> Permission"""
+    model = Role.permissions.through
+    extra = 1
+    verbose_name = 'Permission'
+    verbose_name_plural = 'Permissions'
+
+
+@admin.register(Role)
+class RoleAdmin(admin.ModelAdmin):
+    """Role Admin"""
+    
+    list_display = [
+        'display_name', 'name', 'scope_level',
+        'is_active', 'is_system_role'
+    ]
+    list_filter = ['scope_level', 'is_active', 'is_system_role']
+    search_fields = ['name', 'display_name', 'description']
+    readonly_fields = ['created_at', 'updated_at']
+    
+    fieldsets = (
+        ('Basic Info', {'fields': ('name', 'display_name', 'description')}),
+        ('Scope', {'fields': ('scope_level',)}),
+        ('Status', {'fields': ('is_active', 'is_system_role')}),
+        ('Timestamps', {'fields': ('created_at', 'updated_at')}),
+    )
+    
+    inlines = [RolePermissionInline]
+    
+    def has_delete_permission(self, request, obj=None):
+        if obj and obj.is_system_role:
+            return False
+        return super().has_delete_permission(request, obj)
+
+
+@admin.register(Permission)
+class PermissionAdmin(admin.ModelAdmin):
+    """Permission Admin"""
+    
+    list_display = [
+        'resource', 'action', 'requires_global_scope', 'description'
+    ]
+    list_filter = ['resource', 'action', 'requires_global_scope']
+    search_fields = ['resource', 'action', 'description']
+    readonly_fields = ['created_at', 'updated_at']
+    
+    fieldsets = (
+        ('Permission', {'fields': ('resource', 'action', 'description')}),
+        ('Scope', {'fields': ('requires_global_scope',)}),
+        ('Timestamps', {'fields': ('created_at', 'updated_at')}),
+    )
+
+
+@admin.register(UserRole)
+class UserRoleAdmin(admin.ModelAdmin):
+    """User Role Admin"""
+    
+    list_display = [
+        'user_email', 'role_display', 'region', 'market',
+        'is_active', 'expires_at', 'assigned_at'
+    ]
+    list_filter = ['role', 'region', 'is_active', 'assigned_at']
+    search_fields = ['user__email', 'role__display_name']
+    readonly_fields = ['assigned_at', 'created_at', 'updated_at']
+    
+    fieldsets = (
+        ('Assignment', {'fields': ('user', 'role', 'assigned_by')}),
+        ('Scope', {'fields': ('region', 'market')}),
+        ('Validity', {'fields': ('is_active', 'expires_at')}),
+        ('Timestamps', {'fields': ('assigned_at', 'created_at', 'updated_at')}),
+    )
+    
+    def user_email(self, obj):
+        return obj.user.email
+    user_email.short_description = 'User'
+    user_email.admin_order_field = 'user__email'
+    
+    def role_display(self, obj):
+        return obj.role.display_name
+    role_display.short_description = 'Role'
+    role_display.admin_order_field = 'role__display_name'
+

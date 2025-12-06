@@ -25,6 +25,9 @@ urlpatterns = [
     
     # OIDC
     path('oidc/', include('mozilla_django_oidc.urls')),
+    
+    # Test OIDC (remove in production)
+    path('accounts/test/oidc/', include('apps.accounts.urls_oidc_test')),
 ]
 
 # Serve media files in development
